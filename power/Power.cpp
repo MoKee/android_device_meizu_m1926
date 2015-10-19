@@ -18,10 +18,13 @@
 
 #include <log/log.h>
 
+#include <android-base/file.h>
 #include <hardware/hardware.h>
 #include <hardware/power.h>
 
 #include "Power.h"
+
+#define TAP_TO_WAKE_NODE "/dev/mokee.touch@1.0/dt2w"
 
 namespace android {
 namespace hardware {
@@ -57,6 +60,12 @@ Return<void> Power::powerHint(PowerHint hint, int32_t data)  {
 }
 
 Return<void> Power::setFeature(Feature feature, bool activate)  {
+#ifdef TAP_TO_WAKE_NODE
+    if (feature == Feature::POWER_FEATURE_DOUBLE_TAP_TO_WAKE) {
+        ::android::base::WriteStringToFile(activate ? "1" : "0", TAP_TO_WAKE_NODE, true);
+        return Void();
+    }
+#endif
     if (mModule->setFeature)
         mModule->setFeature(mModule, static_cast<feature_t>(feature),
                 activate ? 1 : 0);
