@@ -21,6 +21,10 @@ TARGET_PREBUILT_KERNEL := $(DEVICE_PATH)/prebuilt/Image.gz-dtb
 # HAX: Remove ASAP
 BOARD_KERNEL_CMDLINE += androidboot.selinux=permissive
 
+# Light
+SOONG_CONFIG_MEIZU_SM6150_LIGHT_BACKLIGHT_PATH := /sys/class/backlight/panel0-backlight
+SOONG_CONFIG_MEIZU_SM6150_LIGHT_MX_LED_PATH := /sys/class/leds/mx-led
+
 # Properties
 TARGET_SYSTEM_PROP += $(DEVICE_PATH)/system.prop
 
