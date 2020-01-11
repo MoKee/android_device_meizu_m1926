@@ -1,0 +1,4 @@
+service touch-hal-1-0-m1926 /system/bin/hw/mokee.touch@1.0-service.m1926
+    class hal
+    user system
+    group system
