@@ -74,6 +74,8 @@ TouchscreenGesture::TouchscreenGesture() {
     });
 
     signal(SIGTERM, sighandler);
+
+    setValue(FOD_ENABLE, true);
 }
 
 Return<void> TouchscreenGesture::getSupportedGestures(getSupportedGestures_cb resultCb) {
