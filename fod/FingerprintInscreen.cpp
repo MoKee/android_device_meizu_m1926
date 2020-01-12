@@ -15,13 +15,19 @@
  * limitations under the License.
  */
 
-#define LOG_TAG "FingerprintInscreenService"
+#define LOG_TAG "InscreenService"
 
 #include "FingerprintInscreen.h"
 #include <android-base/logging.h>
 #include <hidl/HidlTransportSupport.h>
 #include <fstream>
 #include <cmath>
+
+#include <pthread.h>
+#include <linux/input.h>
+#include <sys/epoll.h>
+
+#define EPOLLEVENTS 20
 
 #define NOTIFY_FINGER_DOWN 1536
 #define NOTIFY_FINGER_UP 1537
@@ -33,9 +39,13 @@
 #define HBM_ENABLE_PATH "/sys/class/meizu/lcm/display/hbm"
 #define BRIGHTNESS_PATH "/sys/class/backlight/panel0-backlight/brightness"
 
+#define TOUCHPANAL_DEV_PATH "/dev/input/event2"
+
 #define FOD_POS_X 149 * 3
 #define FOD_POS_Y 604 * 3
 #define FOD_SIZE 62 * 3
+
+#define KEY_FOD 0x0272
 
 namespace vendor {
 namespace mokee {
@@ -63,8 +73,24 @@ static T get(const std::string& path, const T& def) {
     return file.fail() ? def : result;
 }
 
+// Set by the signal handler to destroy the thread
+static volatile bool exit;
+static void *work(void *);
+
+static void sighandler(int) {
+    LOG(INFO) << "Exiting";
+    exit = true;
+}
+
 FingerprintInscreen::FingerprintInscreen() {
     this->mGoodixFpDaemon = IGoodixFingerprintDaemon::getService();
+
+    exit = false;
+    signal(SIGTERM, sighandler);
+
+    if (pthread_create(&mPoll, NULL, work, this)) {
+        LOG(ERROR) << "pthread creation failed: " << errno;
+    }
 }
 
 Return<int32_t> FingerprintInscreen::getPositionX() {
@@ -131,8 +157,31 @@ Return<bool> FingerprintInscreen::shouldBoostBrightness() {
     return false;
 }
 
-Return<void> FingerprintInscreen::setCallback(const sp<IFingerprintInscreenCallback>&) {
+Return<void> FingerprintInscreen::setCallback(const sp<IFingerprintInscreenCallback>& callback) {
+    std::lock_guard<std::mutex> _lock(mCallbackLock);
+    mCallback = callback;
     return Void();
+}
+
+void FingerprintInscreen::notifyKeyEvent(int value) {
+    LOG(INFO) << "notifyKeyEvent: " << value;
+
+    std::lock_guard<std::mutex> _lock(mCallbackLock);
+    if (mCallback == nullptr) {
+        return;
+    }
+
+    if (value) {
+        Return<void> ret = mCallback->onFingerDown();
+        if (!ret.isOk()) {
+            LOG(ERROR) << "FingerDown() error: " << ret.description();
+        }
+    } else {
+        Return<void> ret = mCallback->onFingerUp();
+        if (!ret.isOk()) {
+            LOG(ERROR) << "FingerUp() error: " << ret.description();
+        }
+    }
 }
 
 void FingerprintInscreen::notifyHal(int32_t cmd) {
@@ -142,6 +191,70 @@ void FingerprintInscreen::notifyHal(int32_t cmd) {
     if (!ret.isOk()) {
         LOG(ERROR) << "notifyHal(" << cmd << ") error: " << ret.description();
     }
+}
+
+static void *work(void *arg) {
+    int epoll_fd, input_fd;
+    struct epoll_event ev;
+    struct input_event key_event;
+    int nevents = 0;
+
+    FingerprintInscreen *service = (FingerprintInscreen *)arg;
+
+    LOG(INFO) << "Creating thread";
+
+    input_fd = open(TOUCHPANAL_DEV_PATH, O_RDONLY);
+    if (input_fd < 0) {
+        LOG(ERROR) << "Failed opening input dev: " << errno;
+        return NULL;
+    }
+
+    ev.events = EPOLLIN;
+    ev.data.fd = input_fd;
+
+    epoll_fd = epoll_create(EPOLLEVENTS);
+    if (epoll_fd == -1) {
+        LOG(ERROR) << "Failed epoll_create: " << errno;
+        goto error;
+    }
+
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, input_fd, &ev) == -1) {
+        LOG(ERROR) << "Failed epoll_ctl: " << errno;
+        goto error;
+    }
+
+    while (!exit) {
+        struct epoll_event events[EPOLLEVENTS];
+
+        nevents = epoll_wait(epoll_fd, events, EPOLLEVENTS, -1);
+        if (nevents == -1) {
+            if (errno == EINTR) {
+                continue;
+            }
+            LOG(ERROR) << "Failed epoll_wait: " << errno;
+            break;
+        }
+
+        for (int i = 0; i < nevents; i++) {
+            int ret;
+            int fd = events[i].data.fd;
+            lseek(fd, 0, SEEK_SET);
+            ret = read(fd, &key_event, sizeof(key_event));
+            if (ret && key_event.type == EV_KEY && key_event.code == KEY_FOD) {
+                service->notifyKeyEvent(key_event.value);
+            }
+        }
+    }
+
+    LOG(INFO) << "Exiting worker thread";
+
+error:
+    close(input_fd);
+
+    if (epoll_fd >= 0)
+        close(epoll_fd);
+
+    return NULL;
 }
 
 }  // namespace implementation
