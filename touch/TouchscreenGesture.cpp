@@ -75,6 +75,8 @@ TouchscreenGesture::TouchscreenGesture() {
     if (pthread_create(&mPoll, NULL, work, this)) {
         LOG(ERROR) << "pthread creation failed: " << errno;
     }
+
+    setValue(FOD_ENABLE, true);
 }
 
 Return<void> TouchscreenGesture::getSupportedGestures(getSupportedGestures_cb resultCb) {
