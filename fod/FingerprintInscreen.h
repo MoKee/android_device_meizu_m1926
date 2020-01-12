@@ -55,8 +55,15 @@ class FingerprintInscreen : public IFingerprintInscreen {
     Return<bool> shouldBoostBrightness() override;
     Return<void> setCallback(const sp<IFingerprintInscreenCallback>& callback) override;
 
+    void notifyKeyEvent(int value);
+
   private:
     sp<IGoodixFingerprintDaemon> mGoodixFpDaemon;
+
+    std::mutex mCallbackLock;
+    sp<IFingerprintInscreenCallback> mCallback;
+
+    pthread_t mPoll;
 
     void notifyHal(int32_t cmd);
 };
