@@ -32,6 +32,8 @@ class TouchscreenGesture : public ITouchscreenGesture {
     Return<bool> setGestureEnabled(const ::vendor::mokee::touch::V1_0::Gesture& gesture,
                                    bool enabled) override;
 
+    void setDoubleTapEnabled(bool enabled);
+
   private:
     typedef struct {
         int32_t keycode;
