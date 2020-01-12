@@ -57,6 +57,7 @@ const std::map<int32_t, TouchscreenGesture::GestureInfo> TouchscreenGesture::kGe
 };
 
 TouchscreenGesture::TouchscreenGesture() {
+    setValue(FOD_ENABLE, true);
 }
 
 Return<void> TouchscreenGesture::getSupportedGestures(getSupportedGestures_cb resultCb) {
