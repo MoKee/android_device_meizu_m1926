@@ -13,7 +13,13 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#include <pthread.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+
 #define GESTURE_CONTROL_PATH "/sys/class/meizu/tp/gesture_control"
+
+#define DT2W_FIFO_PATH "/dev/mokee.touch@1.0/dt2w"
 
 #define SLIDE_LEFT_ENABLE   (1 << 0)
 #define SLIDE_RIGHT_ENABLE  (1 << 1)
@@ -56,7 +62,19 @@ const std::map<int32_t, TouchscreenGesture::GestureInfo> TouchscreenGesture::kGe
     {5, {0x0296, "letter_v", DRAW_V_ENABLE}},
 };
 
+// Set by the signal handler to destroy the thread
+volatile bool destroyThread;
+
+void *work(void *);
+void sighandler(int sig);
+
 TouchscreenGesture::TouchscreenGesture() {
+    destroyThread = false;
+    signal(SIGUSR1, sighandler);
+
+    if (pthread_create(&mPoll, NULL, work, this)) {
+        LOG(ERROR) << "pthread creation failed: " << errno;
+    }
 }
 
 Return<void> TouchscreenGesture::getSupportedGestures(getSupportedGestures_cb resultCb) {
@@ -81,6 +99,11 @@ Return<bool> TouchscreenGesture::setGestureEnabled(
     LOG(INFO) << "setGestureEnabled: " << hex(value) << " " << enabled;
 
     return setValue(value, enabled);
+}
+
+void TouchscreenGesture::setDoubleTapEnabled(bool enabled) {
+    LOG(INFO) << "setDoubleTapEnabled: " << enabled;
+    setValue(DOUBLE_TAP_ENABLE, enabled);
 }
 
 bool TouchscreenGesture::setValue(uint32_t value, bool enabled) {
@@ -114,6 +137,63 @@ bool TouchscreenGesture::setValue(uint32_t value, bool enabled) {
     LOG(INFO) << "setValue: " << hex(mValue) << " " << ret;
 
     return true;
+}
+
+void *work(void *param) {
+    int fd, len, on;
+    char buf[10];
+
+    TouchscreenGesture *service = (TouchscreenGesture *)param;
+
+    LOG(INFO) << "Creating thread";
+
+    if (mkfifo(DT2W_FIFO_PATH, 0660) < 0) {
+        LOG(ERROR) << "Failed creating dt2w node: " << errno;
+        return NULL;
+    }
+
+    fd = open(DT2W_FIFO_PATH, O_RDONLY);
+    if (fd < 0) {
+        LOG(ERROR) << "Failed opening dt2w node: " << errno;
+        return NULL;
+    }
+
+    while (!destroyThread) {
+        len = read(fd, buf, sizeof(buf));
+        if (len < 0) {
+            LOG(ERROR) << "Failed reading dt2w node: " << errno;
+            goto error;
+        } else if (len == 0) {
+            continue;
+        }
+
+        len = sscanf(buf, "%d", &on);
+        if (len != 1) {
+            continue;
+        }
+
+        if (on != 0) {
+            service->setDoubleTapEnabled(true);
+        } else {
+            service->setDoubleTapEnabled(false);
+        }
+    }
+
+    LOG(INFO) << "Exiting worker thread";
+
+error:
+    close(fd);
+
+    return NULL;
+}
+
+void sighandler(int sig) {
+    if (sig == SIGUSR1) {
+        destroyThread = true;
+        LOG(INFO) << "Destroy set";
+        return;
+    }
+    signal(SIGUSR1, sighandler);
 }
 
 }  // namespace implementation
