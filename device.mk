@@ -34,6 +34,10 @@ PRODUCT_COPY_FILES += \
 PRODUCT_COPY_FILES += \
     $(call find-copy-subdir-files,*,$(LOCAL_PATH)/keylayout,$(TARGET_COPY_OUT_SYSTEM)/usr/keylayout)
 
+# Parts
+PRODUCT_PACKAGES += \
+    MeizuParts
+
 # Power
 PRODUCT_PACKAGES += \
     android.hardware.power@1.0-impl.m1926
