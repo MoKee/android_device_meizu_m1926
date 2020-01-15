@@ -23,6 +23,7 @@ cc_binary {
         "liblog",
         "libhwbinder",
         "libutils",
+        "libcutils",
         "vendor.mokee.biometrics.fingerprint.inscreen@1.0",
         "vendor.goodix.hardware.biometrics.fingerprint@2.1",
     ],
