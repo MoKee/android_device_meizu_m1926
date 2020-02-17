@@ -25,6 +25,7 @@
 #include <hidl/HidlTransportSupport.h>
 #include <fstream>
 #include <cmath>
+#include <thread>
 
 #define NOTIFY_FINGER_DOWN 1536
 #define NOTIFY_FINGER_UP 1537
@@ -79,6 +80,7 @@ static void sighandler(int) {
 
 FingerprintInscreen::FingerprintInscreen()
     : mIconShown{false}
+    , mFingerPressed{false}
     {
     this->mGoodixFpDaemon = IGoodixFingerprintDaemon::getService();
 
@@ -112,12 +114,19 @@ Return<void> FingerprintInscreen::onFinishEnroll() {
 }
 
 Return<void> FingerprintInscreen::onPress() {
+    mFingerPressed = true;
     set(HBM_ENABLE_PATH, 1);
-    notifyHal(NOTIFY_FINGER_DOWN);
+    std::thread([this]() {
+        std::this_thread::sleep_for(std::chrono::milliseconds(60));
+        if (mFingerPressed) {
+            notifyHal(NOTIFY_FINGER_DOWN);
+        }
+    }).detach();
     return Void();
 }
 
 Return<void> FingerprintInscreen::onRelease() {
+    mFingerPressed = false;
     set(HBM_ENABLE_PATH, 0);
     notifyHal(NOTIFY_FINGER_UP);
     return Void();
