@@ -40,6 +40,7 @@ PRODUCT_COPY_FILES += \
 
 # LiveDisplay
 PRODUCT_PACKAGES += \
+    mokee.livedisplay@2.0-init.sh \
     mokee.livedisplay@2.0-service.m1926
 
 # Power
