@@ -35,6 +35,7 @@
 // #define NOTIFY_DISABLE_PAY_ENVIRONMENT 1610
 
 #define HBM_ENABLE_PATH "/sys/class/meizu/lcm/display/hbm"
+#define BRIGHTNESS_PATH "/sys/class/backlight/panel0-backlight/brightness"
 
 #define TOUCHPANAL_DEV_PATH "/dev/input/event2"
 
@@ -78,8 +79,7 @@ static void sighandler(int) {
 }
 
 FingerprintInscreen::FingerprintInscreen()
-    : mHBM{0}
-    , mIconShown{false}
+    : mIconShown{false}
     , mFingerPressed{false}
     {
     this->mGoodixFpDaemon = IGoodixFingerprintDaemon::getService();
@@ -115,6 +115,7 @@ Return<void> FingerprintInscreen::onFinishEnroll() {
 
 Return<void> FingerprintInscreen::onPress() {
     mFingerPressed = true;
+    set(HBM_ENABLE_PATH, 1);
     std::thread([this]() {
         std::this_thread::sleep_for(std::chrono::milliseconds(150));
         if (mFingerPressed) {
@@ -126,21 +127,19 @@ Return<void> FingerprintInscreen::onPress() {
 
 Return<void> FingerprintInscreen::onRelease() {
     mFingerPressed = false;
+    set(HBM_ENABLE_PATH, 0);
     notifyHal(NOTIFY_FINGER_UP);
     return Void();
 }
 
 Return<void> FingerprintInscreen::onShowFODView() {
     mIconShown = true;
-    mHBM = get(HBM_ENABLE_PATH, 0);
-    set(HBM_ENABLE_PATH, 1);
     notifyHal(NOTIFY_UI_READY);
     return Void();
 }
 
 Return<void> FingerprintInscreen::onHideFODView() {
     mIconShown = false;
-    set(HBM_ENABLE_PATH, mHBM);
     notifyHal(NOTIFY_UI_DISAPPER);
     return Void();
 }
@@ -158,7 +157,11 @@ Return<void> FingerprintInscreen::setLongPressEnabled(bool) {
 }
 
 Return<int32_t> FingerprintInscreen::getDimAmount(int32_t) {
-    return 0;
+    int brightness = get(BRIGHTNESS_PATH, 0);
+    float alpha = 1.0 - pow(brightness / 255.0f, 0.455);
+    float min = (float) property_get_int32("fod.dimming.min", 0);
+    float max = (float) property_get_int32("fod.dimming.max", 255);
+    return min + (max - min) * alpha;
 }
 
 Return<bool> FingerprintInscreen::shouldBoostBrightness() {
